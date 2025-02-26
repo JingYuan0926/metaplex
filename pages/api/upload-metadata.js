@@ -8,9 +8,9 @@ export default async function handler(req, res) {
   const { metadata } = req.body;
 
   // Filebase credentials - store these in environment variables
-  const S3_KEY = process.env.NEXT_PUBLIC_FILEBASE_KEY;
-  const S3_SECRET = process.env.NEXT_PUBLIC_FILEBASE_SECRET;
-  const BUCKET_NAME = process.env.NEXT_PUBLIC_FILEBASE_BUCKET;
+  const S3_KEY = process.env.FILEBASE_KEY;
+  const S3_SECRET = process.env.FILEBASE_SECRET;
+  const BUCKET_NAME = process.env.FILEBASE_BUCKET;
 
   try {
     // Create a new instance of the ObjectManager
