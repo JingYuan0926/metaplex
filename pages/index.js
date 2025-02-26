@@ -1,114 +1,228 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useState } from "react";
+import { Metaplex, walletAdapterIdentity } from "@metaplex-foundation/js";
+import { Connection, clusterApiUrl, PublicKey, Keypair } from "@solana/web3.js";
+import WalletButton from "../components/WalletButton";
 
 export default function Home() {
-  return (
-    <div
-      className={`${geistSans.variable} ${geistMono.variable} grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]`}
-    >
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              pages/index.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const wallet = useWallet();
+  const { publicKey, connected } = wallet;
+  const [loading, setLoading] = useState(false);
+  const [nftName, setNftName] = useState('My Solana NFT');
+  const [mintStatus, setMintStatus] = useState('');
+  const [mintedNFT, setMintedNFT] = useState(null);
+  const [imageUrl, setImageUrl] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleImageUrlChange = (e) => {
+    const url = e.target.value;
+    setImageUrl(url);
+    setPreviewUrl(url);
+  };
+
+  // Upload metadata JSON to Filebase via API route
+  const uploadMetadataToFilebase = async (metadata) => {
+    try {
+      setMintStatus('Uploading metadata to Filebase...');
+      
+      const response = await fetch('/api/upload-metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ metadata }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to upload metadata');
+      }
+      
+      const data = await response.json();
+      console.log("Uploaded metadata to Filebase:", data);
+      
+      return data.metadataUri;
+    } catch (error) {
+      console.error("Error uploading to Filebase:", error);
+      throw new Error(`Filebase upload failed: ${error.message}`);
+    }
+  };
+
+  const mintNFT = async () => {
+    if (!connected) {
+      setMintStatus('Please connect your wallet first');
+      return;
+    }
+
+    if (!nftName || !imageUrl) {
+      setMintStatus('Please fill in both name and image URL');
+      return;
+    }
+
+    setLoading(true);
+    setMintStatus('Starting NFT minting process...');
+
+    try {
+      console.log("Starting NFT minting process...");
+      
+      const connection = new Connection(clusterApiUrl("devnet"));
+      const metaplex = new Metaplex(connection);
+      
+      // Configure Metaplex with wallet
+      metaplex.use(walletAdapterIdentity(wallet));
+
+      // Generate a new mint account
+      const mintKeypair = Keypair.generate();
+      console.log("Generated mint address:", mintKeypair.publicKey.toBase58());
+      setMintStatus(`Generated mint address: ${mintKeypair.publicKey.toBase58()}`);
+
+      // Create metadata JSON
+      const metadata = {
+        name: nftName,
+        description: `A Solana NFT created with Filebase IPFS storage`,
+        image: imageUrl,
+        attributes: [],
+        properties: {
+          files: [{
+            uri: imageUrl,
+            type: "image/jpeg"
+          }]
+        }
+      };
+      
+      // Upload metadata to Filebase and get URI
+      const metadataUri = await uploadMetadataToFilebase(metadata);
+      console.log("Metadata URI:", metadataUri);
+      setMintStatus(`Metadata uploaded to: ${metadataUri}`);
+
+      // Create NFT using the mintKeypair
+      setMintStatus('Creating NFT on Solana...');
+      const { nft } = await metaplex.nfts().create({
+        uri: metadataUri,
+        name: nftName,
+        sellerFeeBasisPoints: 500,
+        useNewMint: mintKeypair,
+        tokenOwner: publicKey,
+      });
+
+      console.log("NFT created successfully!");
+      console.log("Mint address:", nft.address.toBase58());
+      console.log("Metadata address:", nft.metadataAddress.toBase58());
+      
+      setMintedNFT({
+        mintAddress: nft.address.toBase58(),
+        metadataAddress: nft.metadataAddress.toBase58(),
+        metadataUri: metadataUri
+      });
+      
+      setMintStatus('NFT minted successfully!');
+    } catch (error) {
+      console.error("Error minting NFT:", error);
+      setMintStatus(`Error minting NFT: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto p-8 font-sans">
+      <h1 className="text-4xl text-gray-700 mb-8 text-center">
+        Solana NFT Minter with Filebase
+      </h1>
+      
+      <div className="flex flex-col items-center mb-8">
+        <WalletButton />
+        {connected && (
+          <p className="mt-2 text-emerald-600 font-bold">
+            Connected: {publicKey.toString().slice(0, 8)}...
+          </p>
+        )}
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-8 shadow-md">
+        <div className="mb-6">
+          <label className="block mb-2 font-bold text-gray-600">
+            NFT Name
+          </label>
+          <input
+            type="text"
+            value={nftName}
+            onChange={(e) => setNftName(e.target.value)}
+            placeholder="Enter NFT name"
+            disabled={loading}
+            className="w-full p-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+        
+        <div className="mb-6">
+          <label className="block mb-2 font-bold text-gray-600">
+            NFT Image URL
+          </label>
+          <input
+            type="url"
+            value={imageUrl}
+            onChange={handleImageUrlChange}
+            placeholder="Enter image URL"
+            disabled={loading}
+            className="w-full p-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+          
+          {previewUrl && (
+            <div className="p-4 border border-gray-300 rounded-md bg-gray-100">
+              <img
+                src={previewUrl}
+                alt="NFT preview"
+                className="max-w-full max-h-[200px] rounded-md mx-auto"
+              />
+              <p className="mt-2 text-center text-gray-500">Preview of your NFT image</p>
+            </div>
+          )}
+        </div>
+        
+        <button
+          onClick={mintNFT}
+          disabled={!connected || loading}
+          className={`w-full py-3 px-6 rounded-md font-bold text-white text-base transition-colors
+            ${!connected || loading
+              ? 'bg-purple-300 cursor-not-allowed' 
+              : 'bg-purple-600 hover:bg-purple-700 cursor-pointer'}`}
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          {loading ? 'Minting...' : 'Mint NFT'}
+        </button>
+        
+        {mintStatus && (
+          <div className="mt-4 p-4 rounded-md bg-gray-100 font-medium">
+            {mintStatus}
+          </div>
+        )}
+        
+        {mintedNFT && (
+          <div className="mt-4 p-4 rounded-md bg-emerald-500 text-white font-medium">
+            <p className="mb-2">NFT Minted Successfully!</p>
+            <p className="mb-2">Mint Address: {mintedNFT.mintAddress}</p>
+            <p className="mb-2">Metadata Address: {mintedNFT.metadataAddress}</p>
+            <p className="mb-2">Metadata URI: {mintedNFT.metadataUri}</p>
+            <div className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0 mt-4">
+              <a 
+                href={`https://explorer.solana.com/address/${mintedNFT.mintAddress}?cluster=devnet`} 
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block px-4 py-2 bg-white text-emerald-500 rounded-md font-bold no-underline hover:bg-gray-50 text-center"
+              >
+                View on Solana Explorer
+              </a>
+              <a 
+                href={mintedNFT.metadataUri} 
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block px-4 py-2 bg-white text-emerald-500 rounded-md font-bold no-underline hover:bg-gray-50 text-center"
+              >
+                View Metadata
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
