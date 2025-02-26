@@ -9,6 +9,7 @@ export default function Home() {
   const { publicKey, connected } = wallet;
   const [loading, setLoading] = useState(false);
   const [nftName, setNftName] = useState('My Solana NFT');
+  const [nftDescription, setNftDescription] = useState('');
   const [mintStatus, setMintStatus] = useState('');
   const [mintedNFT, setMintedNFT] = useState(null);
   const [imageUrl, setImageUrl] = useState('');
@@ -79,7 +80,7 @@ export default function Home() {
       // Create metadata JSON
       const metadata = {
         name: nftName,
-        description: `A Solana NFT created with Filebase IPFS storage`,
+        description: nftDescription || 'A Solana NFT created with Filebase IPFS storage',
         image: imageUrl,
         attributes: [],
         properties: {
@@ -151,6 +152,20 @@ export default function Home() {
             placeholder="Enter NFT name"
             disabled={loading}
             className="w-full p-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+        </div>
+        
+        <div className="mb-6">
+          <label className="block mb-2 font-bold text-gray-600">
+            NFT Description
+          </label>
+          <textarea
+            value={nftDescription}
+            onChange={(e) => setNftDescription(e.target.value)}
+            placeholder="Enter NFT description"
+            disabled={loading}
+            rows={3}
+            className="w-full p-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
           />
         </div>
         
