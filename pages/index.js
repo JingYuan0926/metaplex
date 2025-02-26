@@ -54,29 +54,29 @@ export default function Home() {
       setMintStatus('Please connect your wallet first');
       return;
     }
-
+  
     if (!nftName || !imageUrl) {
       setMintStatus('Please fill in both name and image URL');
       return;
     }
-
+  
     setLoading(true);
     setMintStatus('Starting NFT minting process...');
-
+  
     try {
       console.log("Starting NFT minting process...");
       
-      const connection = new Connection(clusterApiUrl("devnet"));
+      const connection = new Connection(clusterApiUrl("devnet"), 'confirmed');
       const metaplex = new Metaplex(connection);
       
       // Configure Metaplex with wallet
       metaplex.use(walletAdapterIdentity(wallet));
-
+  
       // Generate a new mint account
       const mintKeypair = Keypair.generate();
       console.log("Generated mint address:", mintKeypair.publicKey.toBase58());
       setMintStatus(`Generated mint address: ${mintKeypair.publicKey.toBase58()}`);
-
+  
       // Create metadata JSON
       const metadata = {
         name: nftName,
@@ -95,17 +95,22 @@ export default function Home() {
       const metadataUri = await uploadMetadataToFilebase(metadata);
       console.log("Metadata URI:", metadataUri);
       setMintStatus(`Metadata uploaded to: ${metadataUri}`);
-
+  
       // Create NFT using the mintKeypair
       setMintStatus('Creating NFT on Solana...');
-      const { nft } = await metaplex.nfts().create({
-        uri: metadataUri,
-        name: nftName,
-        sellerFeeBasisPoints: 500,
-        useNewMint: mintKeypair,
-        tokenOwner: publicKey,
-      });
-
+      
+      // This is the key modification - use the createNft method with proper confirmation
+      const { nft } = await metaplex.nfts().create(
+        {
+          uri: metadataUri,
+          name: nftName,
+          sellerFeeBasisPoints: 500,
+          useNewMint: mintKeypair,
+          tokenOwner: publicKey,
+        },
+        { commitment: 'finalized' }  // Add commitment level for transaction confirmation
+      );
+  
       console.log("NFT created successfully!");
       console.log("Mint address:", nft.address.toBase58());
       console.log("Metadata address:", nft.metadataAddress.toBase58());
